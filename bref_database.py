@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 # get unique dictionary of team to franchise IDs to merge into following dataframes
-teams = pd.read_csv("project_data\LahmanData2023\core\Teams.csv")
+teams = pd.read_csv(r"project_data\LahmanData2023\core\Teams.csv")
 
 franch_IDs = []
 for team in teams["teamID"].unique():
@@ -13,7 +13,7 @@ franchises = pd.DataFrame(
 )
 
 # case sensitive fix for some differences in formatting
-warbat = pd.read_csv("project_data\war_daily_bat.txt")
+warbat = pd.read_csv(r"project_data\war_daily_bat.txt")
 warbat = warbat[warbat["year_ID"] > 1984]
 for a in warbat["team_ID"].unique():
     if not a in list(franchises["teamID"]):
@@ -23,13 +23,13 @@ for a in warbat["team_ID"].unique():
             franchises.loc[len(franchises.index)] = ["TBR", "TBD"]
 
 
-salary = pd.read_csv("project_data\LahmanData2023\contrib\Salaries.csv").merge(
+salary = pd.read_csv(r"project_data\LahmanData2023\contrib\Salaries.csv").merge(
     franchises, on="teamID"
 )
 
 # merging franchise ID data onto WAR data from baseballreference
 war_batting = warbat.merge(franchises, left_on="team_ID", right_on="teamID")
-war_pitching = pd.read_csv("project_data\war_daily_pitch.txt").merge(
+war_pitching = pd.read_csv(r"project_data\war_daily_pitch.txt").merge(
     franchises, left_on="team_ID", right_on="teamID"
 )
 
@@ -100,8 +100,8 @@ stinters = (
 drop_idx = []
 for i in range(len(stinters)):
     idx = players[
-        (players["player_ID"] == stinters.iloc[i][0])
-        & (players["year_ID"] == stinters.iloc[i][1])
+        (players["player_ID"] == stinters.iloc[i].iloc[0])
+        & (players["year_ID"] == stinters.iloc[i].iloc[1])
         & (players["salary_x"].isnull())
     ].index.tolist()
     for a in idx:
@@ -117,7 +117,7 @@ players = players.drop(index=drop_idx).reset_index(drop=True)
 avg_player_season_salary = (
     players_salary.loc[:, ["year_ID", "season", "salary_x"]]
     .groupby(by=["year_ID", "season"])
-    .agg([np.mean, len])
+    .agg(["mean", len])
     .reset_index()
 )
 # calculating salary minimum
@@ -158,13 +158,13 @@ for i in range(len(players)):
                     avg_player_season_salary[
                         (avg_player_season_salary["year_ID"] == year)
                         & (avg_player_season_salary["season"] == players["season"][i])
-                    ]["salary_x"]["mean"]
+                    ]["salary_x"]["mean"].iloc[0]
                 )
             except:
                 est = yearly_minimum_salary[year]
 
     else:
-        est = np.NaN
+        est = np.nan
     est_salaries.append(est)
 
 players["estimated_salary"] = est_salaries
@@ -187,7 +187,7 @@ teams = (
         :, ["year_ID", "franchID", "salary_x", "WAR_total", "aggregated_salary"]
     ]
     .groupby(["year_ID", "franchID"])
-    .agg(sum)
+    .agg("sum")
     .reset_index()
     .merge(teams, left_on=["year_ID", "franchID"], right_on=["yearID", "franchID"])
 )
@@ -196,7 +196,7 @@ teams = (
 teams_salary = (
     players_salary.loc[:, ["year_ID", "franchID", "salary_x", "WAR_total"]]
     .groupby(["year_ID", "franchID"])
-    .agg(sum)
+    .agg("sum")
     .reset_index()
     .merge(teams, left_on=["year_ID", "franchID"], right_on=["yearID", "franchID"])
 )
@@ -235,14 +235,14 @@ players["playoffs"] = player_playoffs
 players_average = (
     players.loc[:, ["year_ID", "salary_x", "aggregated_salary"]]
     .groupby("year_ID")
-    .agg(["mean", np.std, np.median])
+    .agg(["mean", "std", "median"])
     .reset_index()
 )
 
 teams_average = (
     teams.loc[:, ["year_ID", "salary_x", "aggregated_salary"]]
     .groupby("year_ID")
-    .agg(["mean", np.std, np.median])
+    .agg(["mean", "std", "median"])
     .reset_index()
 )
 
@@ -255,7 +255,7 @@ for i in range(len(teams)):
         / float(
             teams_average[teams_average["year_ID"] == teams["year_ID"][i]]["salary_x"][
                 "mean"
-            ]
+            ].iloc[0]
         )
     )
 
@@ -275,7 +275,7 @@ for i in range(len(players)):
         / float(
             players_average[players_average["year_ID"] == players["year_ID"][i]][
                 "salary_x"
-            ]["mean"]
+            ]["mean"].iloc[0]
         )
     )
 
@@ -284,12 +284,17 @@ for i in range(len(players)):
         / float(
             players_average[players_average["year_ID"] == players["year_ID"][i]][
                 "aggregated_salary"
-            ]["mean"]
+            ]["mean"].iloc[0]
         )
     )
 
 players["salary_plus"] = player_salary_plus
 players["aggregated_salary_plus"] = player_salary_plus_agg
+
+players["team_salary_rank"] = players.groupby(['franchID','year_ID'])['aggregated_salary_plus'].rank(ascending=False, method='first')
+players["team_position_salary_rank"] = players.groupby(['franchID','year_ID','pitcher'])['aggregated_salary_plus'].rank(ascending=False, method='first')
+
+
 
 teams["salary_plus"] = pct_teams_average
 teams_salary["salary_plus"] = pct_teams_average
@@ -313,6 +318,33 @@ for i in range(len(teams)):
 teams["salary_std"] = salary_std
 teams.reset_index(inplace=True)
 
+
+# adding groups based on team win counts. numbers are decided for narrative importance in making the playoffs.
+wins_dict = {}
+teams["win_group"] = ""
+
+for year in range(1985,2020):
+    win_counts = [0,82,89,95,117]
+
+    for i in range(1,len(win_counts)):
+        wins_dict["below"+str(win_counts[i])+"_"+str(year)] = list(teams[(teams['W']>=(win_counts[i-1])) & (teams['W']<win_counts[i]) & (teams['year_ID'] == year)]['franchID'])
+        teams.loc[((teams['W']>=(win_counts[i-1])) & (teams['W']<win_counts[i]) & (teams['year_ID'] == year)), 'win_group'] = "below"+str(win_counts[i])
+
+
+# salary statistics grouped by positional vs pitcher
+
+pitcher_salary = players[players['pitcher']=='Y'][['year_ID','franchID','WAR_total','aggregated_salary']].groupby(by=['year_ID','franchID']).agg('sum').reset_index()
+pitcher_salary.rename(columns={'WAR_total':'pitcher_WAR','aggregated_salary':'pitcher_salary'},inplace=True)
+fielder_salary = players[players['pitcher']=='N'][['year_ID','franchID','WAR_total','aggregated_salary']].groupby(by=['year_ID','franchID']).agg('sum').reset_index()
+fielder_salary.rename(columns={'WAR_total':'fielder_WAR','aggregated_salary':'fielder_salary'},inplace=True)
+
+positional_salary = pitcher_salary.merge(fielder_salary,on=['year_ID','franchID'])
+positional_salary['pct_pitcher_WAR'] = positional_salary['pitcher_WAR']/(positional_salary['pitcher_WAR']+positional_salary['fielder_WAR'])
+positional_salary['pct_pitcher_salary'] = positional_salary['pitcher_salary']/(positional_salary['pitcher_salary']+positional_salary['fielder_salary'])
+
+teams = teams.merge(positional_salary, on=['year_ID','franchID'])
+
+
 # commented out code to download final dataframes
 
 # global_variables = [
@@ -333,7 +365,7 @@ teams.reset_index(inplace=True)
 # ]
 
 # # a here is out-file-path, set to output to project_data
-# a = "./project_data/"
+# a = "project_data/"
 # b = r".csv"
 
 # for i in range(len(global_variables)):
